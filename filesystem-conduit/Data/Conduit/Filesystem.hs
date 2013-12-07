@@ -22,6 +22,7 @@ module Data.Conduit.Filesystem
 import           Prelude hiding (FilePath)
 
 import           Control.Monad.IO.Class (MonadIO, liftIO)
+import           Control.Monad.Trans.Class
 import           Data.Conduit
 import qualified Data.Conduit.Binary as CB
 import           Filesystem
@@ -43,7 +44,14 @@ traverse :: MonadIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
          -> Producer m FilePath
-traverse _followSymlinks root =
+traverse = traverse' id
+
+traverse' :: MonadIO m
+          => (forall a. m a -> m a) -- ^ Error handler
+          -> Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
+          -> FilePath -- ^ Root directory
+          -> Producer m FilePath
+traverse' hndl _followSymlinks root =
     liftIO (listDirectory root) >>= pull
   where
     pull [] = return ()
@@ -52,10 +60,10 @@ traverse _followSymlinks root =
         if isFile'
             then yield p >> pull ps
             else do
-                follow' <- liftIO $ follow p
+                follow' <- lift $ hndl $ liftIO $ follow p
                 if follow'
                     then do
-                        ps' <- liftIO $ listDirectory p
+                        ps' <- lift $ hndl $ liftIO $ listDirectory p
                         pull ps
                         pull ps'
                     else pull ps
